@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Поездка">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#2c3e50">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Моя поездка: СПб и Выборг</title>
+<link rel="stylesheet" href="lib/leaflet.css"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  header { background: #2c3e50; color: white; padding: 10px 15px; display: flex; flex-direction: column; gap: 8px; }
+  .header-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .header-top h1 { font-size: 16px; flex: 1; }
+  .btn { background: #34495e; color: white; border: none; padding: 6px 12px; border-radius: 15px; font-size: 12px; cursor: pointer; }
+  .btn:hover { background: #3d566e; }
+  .btn-primary { background: #e74c3c; }
+  .btn-primary:hover { background: #c0392b; }
+  .filters { display: flex; gap: 5px; flex-wrap: wrap; }
+  .filter-group { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .filter-group-label { font-size: 11px; color: #bdc3c7; margin-right: 4px; }
+  .filter-btn { background: #34495e; color: white; border: none; padding: 5px 10px; border-radius: 15px; font-size: 12px; cursor: pointer; }
+  .filter-btn.active { background: #e74c3c; }
+  main { flex: 1; display: flex; overflow: hidden; }
+  #map { flex: 2; height: 100%; }
+  #list { flex: 1; max-width: 340px; overflow-y: auto; background: #f5f5f5; border-left: 1px solid #ddd; }
+  .place { padding: 12px; border-bottom: 1px solid #e0e0e0; background: white; margin: 5px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative; }
+  .place-main { cursor: pointer; }
+  .place:hover { background: #ecf0f1; }
+  .place-name { font-weight: 600; font-size: 14px; margin-bottom: 3px; padding-right: 24px; }
+  .place-meta { font-size: 11px; color: #7f8c8d; text-transform: uppercase; }
+  .place-address { font-size: 12px; color: #555; margin-top: 4px; }
+  .cat-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  .delete-btn { position: absolute; top: 8px; right: 8px; background: none; border: none; color: #e74c3c; font-size: 18px; cursor: pointer; padding: 2px 6px; }
+  .popup-btns { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+  .popup-btns a { display: block; padding: 8px 12px; color: white; text-decoration: none; border-radius: 5px; text-align: center; font-size: 13px; }
+  .popup-btns a.yandex { background: #ff0000; }
+  .popup-btns a.dgis { background: #00b956; }
+  .popup-btns a.google { background: #4285f4; }
+
+  /* Модалка добавления */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: white; border-radius: 10px; padding: 20px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+  .modal h2 { margin-bottom: 15px; font-size: 18px; }
+  .modal input, .modal select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 10px; }
+  .search-results { max-height: 250px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px; margin-bottom: 10px; }
+  .search-result { padding: 10px; border-bottom: 1px solid #f0f0f0; cursor: pointer; font-size: 13px; }
+  .search-result:hover { background: #f5f5f5; }
+  .search-result.selected { background: #e8f4fd; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+  .modal-actions .btn { padding: 10px 18px; font-size: 14px; }
+  .loading { text-align: center; padding: 15px; color: #888; font-size: 13px; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  label { display: block; font-size: 12px; color: #555; margin-bottom: 3px; margin-top: 6px; }
+.search-box { position: relative; }
+.search-box input { width: 100%; padding: 7px 30px 7px 12px; border: none; border-radius: 15px; font-size: 13px; background: #34495e; color: white; }
+.search-box input::placeholder { color: #95a5a6; }
+.search-box input:focus { outline: 2px solid #e74c3c; background: #3d566e; }
+.search-clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #95a5a6; cursor: pointer; font-size: 16px; padding: 0 4px; display: none; }
+.search-clear.visible { display: block; }
+.highlight { background: #fff59d; padding: 0 2px; border-radius: 2px; }
+
+  @media (max-width: 768px) {
+    main { flex-direction: column; }
+    #map { flex: 1; min-height: 50vh; }
+    #list { max-width: 100%; border-left: none; border-top: 1px solid #ddd; max-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <h1>🗺️ СПб и Выборг</h1>
+    <button class="btn btn-primary" onclick="openAddModal()">➕ Добавить место</button>
+    <button class="btn" onclick="exportData()">💾 Экспорт</button>
+    <button class="btn" onclick="document.getElementById('import-file').click()">📂 Импорт</button>
+    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+  <div class="filter-group">
+    <span class="filter-group-label">Город:</span>
+    <div class="filters" id="city-filters"></div>
+  </div>
+  <div class="filter-group">
+    <span class="filter-group-label">Категория:</span>
+    <div class="filters" id="cat-filters"></div>
+  </div>
+</header>
+<div class="filter-group">
+  <span class="filter-group-label">Поиск:</span>
+  <div class="search-box" style="flex:1; min-width:200px;">
+    <input type="text" id="list-search" placeholder="Название, адрес, категория...">
+    <button class="search-clear" id="search-clear" onclick="clearListSearch()">✕</button>
+  </div>
+</div>
+
+<main>
+  <div id="map"></div>
+  <div id="list"></div>
+</main>
+
+<!-- Модалка добавления места -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal">
+    <h2>Добавить место</h2>
+    <label>Поиск (название, адрес):</label>
+    <input type="text" id="search-input" placeholder="Например: Эрмитаж, Санкт-Петербург" autocomplete="off">
+    <div id="search-results" class="search-results" style="display:none;"></div>
+    
+    <label>Своё название (как показывать в списке):</label>
+    <input type="text" id="custom-name" placeholder="Оставьте пустым для использования найденного">
+    
+    <div class="row">
+      <div>
+        <label>Город:</label>
+        <select id="city-select">
+          <option value="Санкт-Петербург">Санкт-Петербург</option>
+          <option value="Выборг">Выборг</option>
+          <option value="__new__">➕ Новый город...</option>
+        </select>
+        <input type="text" id="city-new" placeholder="Название города" style="display:none; margin-top:5px;">
+      </div>
+      <div>
+        <label>Категория:</label>
+        <select id="category-select">
+          <option value="Жильё">Жильё</option>
+          <option value="Еда">Еда</option>
+          <option value="Достопримечательности">Достопримечательности</option>
+          <option value="Прочее">Прочее</option>
+          <option value="__new__">➕ Новая категория...</option>
+        </select>
+        <input type="text" id="category-new" placeholder="Название категории" style="display:none; margin-top:5px;">
+      </div>
+    </div>
+    
+    <div class="modal-actions">
+      <button class="btn" onclick="closeAddModal()">Отмена</button>
+      <button class="btn btn-primary" onclick="saveNewPlace()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script src="lib/leaflet.js"></script>
+<script>
+// ======= СТАРТОВЫЕ ДАННЫЕ (используются, если в localStorage пусто) =======
+const defaultPlaces = [
+  { name: "Эрмитаж", category: "Достопримечательности", city: "Санкт-Петербург", lat: 59.9398, lng: 30.3146, address: "Дворцовая площадь, 2" },
+  { name: "Выборгский замок", category: "Достопримечательности", city: "Выборг", lat: 60.7156, lng: 28.7282, address: "Замковый о-в, Выборг" },
+];
+
+const categoryColors = {
+  "Жильё": "#59a3b6",
+  "Еда": "#e67e22",
+  "Достопримечательности": "#27ae60",
+  "Прочее": "#3498db"
+};
+
+// Палитра для новых категорий
+const extraColors = ["#e74c3c", "#f39c12", "#16a085", "#2980b9", "#8e44ad", "#d35400"];
+
+// ======= СОСТОЯНИЕ =======
+let places = loadPlaces();
+let activeCategory = 'all';
+let activeCity = 'all';
+let searchQuery = '';
+let searchSelected = null;
+let searchTimeout = null;
+
+function loadPlaces() {
+  try {
+    const saved = localStorage.getItem('trip_places');
+    if (saved) return JSON.parse(saved);
+  } catch(e) {}
+  return [...defaultPlaces];
+}
+
+function savePlaces() {
+  localStorage.setItem('trip_places', JSON.stringify(places));
+}
+
+function getColor(category) {
+  if (categoryColors[category]) return categoryColors[category];
+  // Генерация цвета для новой категории
+  const hash = category.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
+  return extraColors[hash % extraColors.length];
+}
+
+// ======= КАРТА =======
+const map = L.map('map').setView([59.95, 30.3], 9);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 19
+}).addTo(map);
+
+let userLocation = null;
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(pos => {
+    userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    L.marker([userLocation.lat, userLocation.lng], {
+      icon: L.divIcon({
+        className: 'user-loc',
+        html: '<div style="background:#2980b9;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 0 2px #2980b9;"></div>',
+        iconSize: [16, 16]
+      })
+    }).addTo(map).bindPopup("Вы здесь");
+  });
+}
+
+function makeIcon(color) {
+  return L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="background:${color};width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 22],
+    popupAnchor: [0, -22]
+  });
+}
+
+function buildLinks(place) {
+  const { lat, lng } = place;
+  const from = userLocation ? `${userLocation.lat},${userLocation.lng}` : '';
+  return {
+    yandex: `https://yandex.ru/maps/?rtext=${from}~${lat},${lng}&rtt=auto`,
+    dgis: `https://2gis.ru/routeSearch/rsType/car/${from ? 'from/'+userLocation.lng+','+userLocation.lat+'/' : ''}to/${lng},${lat}`,
+    google: `https://www.google.com/maps/dir/?api=1&${from ? 'origin='+from+'&' : ''}destination=${lat},${lng}&travelmode=driving`
+  };
+}
+
+function popupHtml(place) {
+  const links = buildLinks(place);
+  return `
+    <div style="min-width:200px;">
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px;">${place.name}</div>
+      <div style="font-size:11px;color:#888;text-transform:uppercase;">${place.category} · ${place.city}</div>
+      <div style="font-size:12px;margin:6px 0;">${place.address}</div>
+      <div class="popup-btns">
+        <a class="yandex" href="${links.yandex}" target="_blank">📍 Яндекс.Карты</a>
+        <a class="dgis" href="${links.dgis}" target="_blank">📍 2ГИС</a>
+        <a class="google" href="${links.google}" target="_blank">📍 Google Maps</a>
+      </div>
+    </div>
+  `;
+}
+
+// ======= РЕНДЕР =======
+let markers = [];
+
+function renderMarkers() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  
+  getFiltered().forEach(({p, i}) => {
+    const color = getColor(p.category);
+    const marker = L.marker([p.lat, p.lng], { icon: makeIcon(color) })
+      .bindPopup(popupHtml(p))
+      .addTo(map);
+    marker._placeIndex = i;
+    markers.push(marker);
+  });
+}
+
+function getFiltered() {
+  const q = searchQuery.trim().toLowerCase();
+  return places.map((p, i) => ({p, i})).filter(({p}) => {
+    if (activeCity !== 'all' && p.city !== activeCity) return false;
+    if (activeCategory !== 'all' && p.category !== activeCategory) return false;
+    if (q) {
+      const haystack = [p.name, p.address, p.category, p.city].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function renderFilters() {
+  const cities = [...new Set(places.map(p => p.city))];
+  const categories = [...new Set(places.map(p => p.category))];
+  
+  const cityEl = document.getElementById('city-filters');
+  cityEl.innerHTML = `<button class="filter-btn ${activeCity==='all'?'active':''}" data-city="all">Все</button>` +
+    cities.map(c => `<button class="filter-btn ${activeCity===c?'active':''}" data-city="${c}">${c}</button>`).join('');
+  cityEl.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.onclick = () => { activeCity = btn.dataset.city; renderAll(); };
+  });
+  
+  const catEl = document.getElementById('cat-filters');
+  catEl.innerHTML = `<button class="filter-btn ${activeCategory==='all'?'active':''}" data-cat="all">Все</button>` +
+    categories.map(c => `<button class="filter-btn ${activeCategory===c?'active':''}" data-cat="${c}">${c}</button>`).join('');
+  catEl.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.onclick = () => { activeCategory = btn.dataset.cat; renderAll(); };
+  });
+}
+
+function renderList() {
+  const listEl = document.getElementById('list');
+  const filtered = getFiltered();
+  
+  if (filtered.length === 0) {
+    const msg = searchQuery 
+      ? `Ничего не найдено по запросу «${escapeHtml(searchQuery)}»` 
+      : 'Нет мест. Нажмите «Добавить место».';
+    listEl.innerHTML = `<div style="padding:20px;text-align:center;color:#888;">${msg}</div>`;
+    return;
+  }
+  
+  const q = searchQuery.trim();
+  
+  listEl.innerHTML = filtered.map(({p, i}) => {
+    const color = getColor(p.category);
+    return `
+      <div class="place">
+        <button class="delete-btn" data-del="${i}" title="Удалить">🗑️</button>
+        <div class="place-main" data-i="${i}">
+          <div class="place-name"><span class="cat-dot" style="background:${color}"></span>${highlight(p.name, q)}</div>
+          <div class="place-meta">${highlight(p.category, q)} · ${highlight(p.city, q)}</div>
+          <div class="place-address">${highlight(p.address, q)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  listEl.querySelectorAll('.place-main').forEach(el => {
+    el.onclick = () => {
+      const i = +el.dataset.i;
+      const p = places[i];
+      map.setView([p.lat, p.lng], 16);
+      const marker = markers.find(m => m._placeIndex === i);
+      if (marker) marker.openPopup();
+    };
+  });
+  
+  listEl.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const i = +btn.dataset.del;
+      if (confirm(`Удалить "${places[i].name}"?`)) {
+        places.splice(i, 1);
+        savePlaces();
+        renderAll();
+      }
+    };
+  });
+}
+
+// Вспомогательные функции для подсветки
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function highlight(text, query) {
+  const safe = escapeHtml(text || '');
+  if (!query) return safe;
+  const q = escapeHtml(query);
+  // Экранируем спецсимволы regex
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return safe.replace(new RegExp(`(${escaped})`, 'gi'), '<span class="highlight">$1</span>');
+}
+
+// Обработчик поиска по списку
+document.getElementById('list-search').addEventListener('input', (e) => {
+  searchQuery = e.target.value;
+  document.getElementById('search-clear').classList.toggle('visible', !!searchQuery);
+  renderList();
+  renderMarkers(); // чтобы маркеры на карте тоже фильтровались
+});
+
+function clearListSearch() {
+  document.getElementById('list-search').value = '';
+  searchQuery = '';
+  document.getElementById('search-clear').classList.remove('visible');
+  renderList();
+  renderMarkers();
+}
+
+function renderAll() {
+  renderFilters();
+  renderMarkers();
+  renderList();
+}
+
+// ======= ПОИСК ЧЕРЕЗ NOMINATIM =======
+const searchInput = document.getElementById('search-input');
+const searchResults = document.getElementById('search-results');
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  const q = searchInput.value.trim();
+  if (q.length < 3) {
+    searchResults.style.display = 'none';
+    return;
+  }
+  searchTimeout = setTimeout(() => doSearch(q), 400);
+});
+
+async function doSearch(q) {
+  searchResults.style.display = 'block';
+  searchResults.innerHTML = '<div class="loading">Поиск...</div>';
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=8&accept-language=ru`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'ru' } });
+    const data = await res.json();
+    
+    if (data.length === 0) {
+      searchResults.innerHTML = '<div class="loading">Ничего не найдено</div>';
+      return;
+    }
+    
+    searchResults.innerHTML = data.map((r, i) => `
+      <div class="search-result" data-i="${i}">
+        <div style="font-weight:500;">${r.display_name.split(',').slice(0,2).join(',')}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px;">${r.display_name}</div>
+      </div>
+    `).join('');
+    
+    searchResults.querySelectorAll('.search-result').forEach(el => {
+      el.onclick = () => {
+        searchResults.querySelectorAll('.search-result').forEach(x => x.classList.remove('selected'));
+        el.classList.add('selected');
+        const r = data[el.dataset.i];
+        searchSelected = {
+          lat: parseFloat(r.lat),
+          lng: parseFloat(r.lon),
+          displayName: r.display_name.split(',').slice(0,2).join(',').trim(),
+          fullAddress: r.display_name
+        };
+        
+        // Автоподстановка города
+        const lower = r.display_name.toLowerCase();
+        const citySelect = document.getElementById('city-select');
+        if (lower.includes('выборг')) citySelect.value = 'Выборг';
+        else if (lower.includes('санкт-петербург') || lower.includes('петербург')) citySelect.value = 'Санкт-Петербург';
+      };
+    });
+  } catch(e) {
+    searchResults.innerHTML = '<div class="loading">Ошибка поиска</div>';
+  }
+}
+
+// ======= МОДАЛКА =======
+function openAddModal() {
+  document.getElementById('add-modal').classList.add('active');
+  searchInput.value = '';
+  document.getElementById('custom-name').value = '';
+  document.getElementById('city-new').value = '';
+  document.getElementById('category-new').value = '';
+  document.getElementById('city-new').style.display = 'none';
+  document.getElementById('category-new').style.display = 'none';
+  searchResults.style.display = 'none';
+  searchSelected = null;
+}
+
+function closeAddModal() {
+  document.getElementById('add-modal').classList.remove('active');
+}
+
+document.getElementById('city-select').addEventListener('change', (e) => {
+  document.getElementById('city-new').style.display = e.target.value === '__new__' ? 'block' : 'none';
+});
+document.getElementById('category-select').addEventListener('change', (e) => {
+  document.getElementById('category-new').style.display = e.target.value === '__new__' ? 'block' : 'none';
+});
+
+function saveNewPlace() {
+  if (!searchSelected) {
+    alert('Сначала выберите место из результатов поиска.');
+    return;
+  }
+  
+  let city = document.getElementById('city-select').value;
+  if (city === '__new__') {
+    city = document.getElementById('city-new').value.trim();
+    if (!city) { alert('Введите название города'); return; }
+  }
+  
+  let category = document.getElementById('category-select').value;
+  if (category === '__new__') {
+    category = document.getElementById('category-new').value.trim();
+    if (!category) { alert('Введите название категории'); return; }
+  }
+  
+  const customName = document.getElementById('custom-name').value.trim();
+  const name = customName || searchSelected.displayName;
+  
+  places.push({
+    name,
+    category,
+    city,
+    lat: searchSelected.lat,
+    lng: searchSelected.lng,
+    address: searchSelected.fullAddress
+  });
+  
+  savePlaces();
+  closeAddModal();
+  renderAll();
+}
+
+// ======= ЭКСПОРТ/ИМПОРТ =======
+function exportData() {
+  const blob = new Blob([JSON.stringify(places, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `trip_places_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data)) throw new Error('Неверный формат');
+      if (confirm(`Импортировать ${data.length} мест? Текущий список будет заменён.`)) {
+        places = data;
+        savePlaces();
+        renderAll();
+      }
+    } catch(err) {
+      alert('Ошибка при импорте: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ======= СТАРТ =======
+renderAll();
+</script>
+</body>
+</html>
